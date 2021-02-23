@@ -9,6 +9,7 @@
  *****************************************************************************/
 
 #include "cuhd_util.h"
+#include <iostream>
 
 std::pair<std::string, size_t> cuhd::CUHDUtil::time(std::string s,
     std::function<void()> f) {
@@ -35,7 +36,11 @@ std::pair<std::string, size_t> cuhd::CUHDUtil::time(std::string s,
 
 bool cuhd::CUHDUtil::equals(SYMBOL_TYPE* a, SYMBOL_TYPE* b, size_t size) {
     for(size_t i = 0; i < size; ++i)
-        if(a[i] != b[i]) return false;
+        if(a[i] != b[i]) {
+            std::cout << "First bad: " << i << " a " << (int) a[i]
+                      << " b " << (int) b[i] << std::endl;
+            return false;
+        }
 
     return true;
 }

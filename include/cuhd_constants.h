@@ -12,7 +12,7 @@
 #define CUHD_CONSTANTS_
 
 // maximum codeword length this decoder can process
-#define MAX_CODEWORD_LENGTH 11
+#define MAX_CODEWORD_LENGTH 14
 
 // data type of a unit
 #define UNIT_TYPE std::uint32_t

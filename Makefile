@@ -1,12 +1,12 @@
-CUDA_INCLUDE = /usr/local/cuda-9.1/include
-CUDA_LIB = /usr/local/cuda-9.1/lib64
-ARCH = 70
+CUDA_INCLUDE = ${TACC_CUDA_INC} #/usr/local/cuda/include
+CUDA_LIB = ${TACC_CUDA_LIB} #/usr/local/cuda/lib64
+ARCH = 75
 
 CC = g++
 NVCC = nvcc
 AR = ar
 CFLAGS = -std=c++17 -O3 -march=native -Wall -Werror
-NVCC_FLAGS = --std=c++11 -O3 -Wno-deprecated-gpu-targets $(NVCC_ARCH)
+NVCC_FLAGS = --std=c++14 -O3 -Wno-deprecated-gpu-targets $(NVCC_ARCH)
 RM_FLAGS = -f
 
 INC_DIR = include

@@ -11,6 +11,7 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <fstream>
 
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -36,31 +37,37 @@ int main(int argc, char** argv) {
     const std::int64_t compute_device_id = atoi(argv[1]);
     
     // input size in MB
-    const long int size = atoi(argv[2]) * 1024 * 1024;
+    const long int size = atol(argv[3]);
     
     if(compute_device_id < 0 || size < 1) {
         std::cout << "USAGE: " << bin << " <compute device index> "
-        << "<size of input in megabytes>" << std::endl;
+        << "<input file (uint16)> <number of symbols>" << std::endl;
         return 1;
     }
 
     // vector for storing time measurements
     std::vector<std::pair<std::string, size_t>> timings;
     
-    // generate random data for testing
+    // load data from file
     std::vector<SYMBOL_TYPE> buffer;
     buffer.resize(size);
 
-    std::independent_bits_engine<
-        std::linear_congruential_engine<
-        std::uint_fast32_t, 16807, 0, 2147483647>, 
-        sizeof(SYMBOL_TYPE) * 8, SYMBOL_TYPE> gen;
-    std::binomial_distribution<> dist(
-        std::numeric_limits<SYMBOL_TYPE>::max(), 0.5);
-
-    TIMER_START(timings, "generating random data")
-        std::generate(begin(buffer), end(buffer), [&](){return dist(gen);});
-    TIMER_STOP
+    std::cout << "File: " << argv[2] << std::endl;
+   
+    std::ifstream inf(argv[2], std::ifstream::binary);
+    //uint16_t inb;
+    char inb[2];
+    TIMER_START(timings, "loading data");
+    for (long int i = 0; i < size; ++i) {
+        inf.read(inb, 2);
+        if (!inf) {
+            std::cerr << "Bad I/O" << std::endl;
+            exit(1);
+        }
+        buffer[i] = (uint8_t) inb[0]; // Least significant byte, little endian
+    }
+    TIMER_STOP;
+    inf.close();
 
     std::shared_ptr<std::vector<llhuff::LLHuffmanEncoder::Symbol>> lengths;
     std::shared_ptr<llhuff::LLHuffmanEncoderTable> enc_table;
@@ -130,12 +137,15 @@ int main(int argc, char** argv) {
     TIMER_STOP
     
     // decode
+    int constexpr NROUNDS = 1;                       
     TIMER_START(timings, "decoding")
+        for (int i = 0; i < NROUNDS; ++i) {
         cuhd::CUHDGPUDecoder::decode(
             gpu_in_buf, in_buf->get_compressed_size_units(),
             gpu_out_buf, out_buf->get_uncompressed_size(),
             gpu_table, gpu_decoder_memory,
             MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS);
+        }
     TIMER_STOP
     
     // copy decoded data back to host
@@ -145,7 +155,16 @@ int main(int argc, char** argv) {
 
     // print timings
     for(auto &i: timings) {
-        std::cout << i.first << ".. " << i.second << "µs" << std::endl;
+        if (std::string("decoding") == i.first) {
+            double timeUs = i.second / NROUNDS;
+            std::cout << i.first << ".. "  << timeUs
+                      << "µs" << std::endl;
+            double thruGbs = ((double)(size * sizeof(SYMBOL_TYPE))
+                              / (timeUs * 1e-6)) / 1e9;
+            std::cout << "throughput: " << thruGbs
+                      << " GB/s" << std::endl;
+        }
+        else std::cout << i.first << ".. " << i.second << "µs" << std::endl;
     }
     
     // compare decompressed output to uncompressed input
