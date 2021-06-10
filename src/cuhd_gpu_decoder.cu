@@ -118,28 +118,29 @@ __device__ __forceinline__ void decode_subsequence(
         
         // refill decoder window if necessary
         ++current_unit;
-        ++in_pos;
-        
-        window = in_ptr[in_pos];
-        next = in_ptr[in_pos + 1];
-        
-        if(at == bits_in_unit) {
-            at = 0;
-        }
-
-        else {
-            at -= bits_in_unit;
-            window <<= at;
-            next <<= at;
+        // Bugfix -- Don't refill window at last codeword
+        if (current_unit < subsequence_size) {
+            ++in_pos;
             
-            UNIT_TYPE copy_next = in_ptr[in_pos + 1];
-            copy_next >>= bits_in_unit - at;
-            window += copy_next;
+            window = in_ptr[in_pos];
+            next = in_ptr[in_pos + 1];
+            
+            if(at == bits_in_unit) {
+                at = 0;
+            } else {
+                at -= bits_in_unit;
+                window <<= at;
+                next <<= at;
+                
+                UNIT_TYPE copy_next = in_ptr[in_pos + 1];
+                copy_next >>= bits_in_unit - at;
+                window += copy_next;
+            }
         }
     }
     
     num_symbols = num_symbols_l;
-    last_at = at;
+    last_at = last_word_bit;
 }
 
 __global__ void phase1_decode_subseq(
@@ -156,6 +157,7 @@ __global__ void phase1_decode_subseq(
     if(gid < total_num_subsequences) {
 
         std::uint32_t current_subsequence = gid;
+        std::uint32_t current_subsequence_in_block = threadIdx.x;
         std::uint32_t in_pos = gid * subsequence_size;
 
         // mask
@@ -184,21 +186,23 @@ __global__ void phase1_decode_subseq(
         
         std::uint32_t subsequences_processed = 0;
         bool synchronised_flag = false;   
-        
+        bool overflow_flag = false;
+
         while(subsequences_processed < blockDim.x) {
         
             if(!synchronised_flag
-                && current_subsequence < total_num_subsequences) {
+                && current_subsequence_in_block < blockDim.x) {
 
                 decode_subsequence(subsequence_size, current_subsequence,
                     mask, shift, last_at, in_pos, in_ptr, window, next,
                     last_word_unit, last_word_bit, num_symbols,
                     out_pos, out_ptr, next_out_pos, table, bits_in_unit,
-                    last_at, false, false);
+                    last_at, overflow_flag, false);
                 
                 if(subsequences_processed == 0) {
                     sync_points[current_subsequence] =
                         {last_word_unit, last_word_bit, num_symbols, 1};
+                    overflow_flag = true;
                 }
 
                 else {
@@ -223,8 +227,11 @@ __global__ void phase1_decode_subseq(
                     sync_points[current_subsequence] = sync_point;
                 }
             }
+            window = in_ptr[in_pos];
+            next = in_ptr[in_pos + 1];
             
             ++current_subsequence;
+            ++current_subsequence_in_block;
             ++subsequences_processed;
             
             __syncthreads();
@@ -317,7 +324,9 @@ __global__ void phase2_synchronise_blocks(
                 
                 sync_points[current_subsequence] = sync_point;
             }
-            
+            window = in_ptr[in_pos];
+            next = in_ptr[in_pos + 1];
+
             ++current_subsequence;
             ++subsequences_processed;
             
@@ -385,7 +394,13 @@ __global__ void phase4_decode_write_output(
         std::uint32_t in_pos = current_subsequence * subsequence_size;
         
         uint4 sync_point = sync_points[current_subsequence];
-        uint4 next_sync_point = sync_points[current_subsequence + 1];
+        uint4 next_sync_point;
+        if (gid == total_num_subsequences - 1) {
+            next_sync_point.x = 0; next_sync_point.y = 0;
+            next_sync_point.z = 0; next_sync_point.w = 0;
+        } else {
+            next_sync_point = sync_points[current_subsequence + 1];
+        }
         
         std::uint32_t out_pos = sync_point.z;
         std::uint32_t next_out_pos = gid == total_num_subsequences - 1 ?

@@ -56,10 +56,10 @@ int main(int argc, char** argv) {
    
     std::ifstream inf(argv[2], std::ifstream::binary);
     //uint16_t inb;
-    char inb[2];
+    char inb[1];
     TIMER_START(timings, "loading data");
     for (long int i = 0; i < size; ++i) {
-        inf.read(inb, 2);
+        inf.read(inb, 1);
         if (!inf) {
             std::cerr << "Bad I/O" << std::endl;
             exit(1);

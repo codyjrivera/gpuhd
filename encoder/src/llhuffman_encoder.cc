@@ -210,7 +210,8 @@ void llhuff::LLHuffmanEncoder::encode_memory(UNIT_TYPE* out, size_t size_out,
     size_t at = 0;
     size_t in_unit = 0;
 
-    for(size_t i = 0; i < size_out && in_unit < size_in; ++i) {
+    size_t i;
+    for(i = 0; i < size_out && in_unit < size_in; ++i) {
         auto code = encoder_table->dict[in[in_unit]];
         
         while(at + code.length < max_bits && in_unit < size_in) {
@@ -234,6 +235,10 @@ void llhuff::LLHuffmanEncoder::encode_memory(UNIT_TYPE* out, size_t size_out,
         at = diff;
 
         ++in_unit;
+    }
+    // BUGFIX -- write last word
+    if (i < size_out && at > 0) {
+        out_ptr[i] = (window << ((sizeof(UNIT_TYPE) * 8) - at));
     }
 }
 

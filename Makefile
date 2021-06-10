@@ -1,6 +1,6 @@
-CUDA_INCLUDE = ${TACC_CUDA_INC} #/usr/local/cuda/include
-CUDA_LIB = ${TACC_CUDA_LIB} #/usr/local/cuda/lib64
-ARCH = 75
+CUDA_INCLUDE = /usr/local/cuda/include
+CUDA_LIB = /usr/local/cuda/lib64
+ARCH = 70
 
 CC = g++
 NVCC = nvcc
