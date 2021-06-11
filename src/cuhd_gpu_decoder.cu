@@ -35,6 +35,10 @@ __device__ __forceinline__ void decode_subsequence(
     bool overflow,
     bool write_output) {
 
+    // local unit registers
+    UNIT_TYPE work_window = window;
+    UNIT_TYPE work_next = next;
+
     // current unit in this subsequence
     std::uint32_t current_unit = 0;
     
@@ -48,42 +52,46 @@ __device__ __forceinline__ void decode_subsequence(
     if(overflow && current_subsequence > 0) {
 
         // shift to start
-        UNIT_TYPE copy_next = next;
+        UNIT_TYPE copy_next = work_next;
         copy_next >>= bits_in_unit - at;
 
-        next <<= at;
-        window <<= at;
-        window += copy_next;
+        work_next <<= at;
+        work_window <<= at;
+        work_window += copy_next;
 
         // decode first symbol
-        std::uint32_t taken = table[(window & mask) >> shift].num_bits;
+        std::uint32_t taken = table[(work_window & mask) >> shift].num_bits;
 
-        copy_next = next;
+        copy_next = work_next;
         copy_next >>= bits_in_unit - taken;
 
-        next <<= taken;
-        window <<= taken;
+        work_next <<= taken;
+        work_window <<= taken;
         at += taken;
-        window += copy_next;
+        work_window += copy_next;
 
         // overflow
         if(at > bits_in_unit) {
             ++in_pos;
-            window = in_ptr[in_pos];
+            window = next; //in_ptr[in_pos];
             next = in_ptr[in_pos + 1];
+            work_window = window;
+            work_next = next;
             at -= bits_in_unit;
-            window <<= at;
-            next <<= at;
+            work_window <<= at;
+            work_next <<= at;
 
-            copy_next = in_ptr[in_pos + 1];
+            copy_next = next; //in_ptr[in_pos + 1];
             copy_next >>= bits_in_unit - at;
-            window += copy_next;
+            work_window += copy_next;
         }
 
         else {
             ++in_pos;
-            window = in_ptr[in_pos];
+            window = next; //in_ptr[in_pos];
             next = in_ptr[in_pos + 1];
+            work_window = window;
+            work_next = next;
             at = 0;
         }
     }
@@ -92,7 +100,7 @@ __device__ __forceinline__ void decode_subsequence(
         
         while(at < bits_in_unit) {
             const cuhd::CUHDCodetableItemSingle hit =
-                table[(window & mask) >> shift];
+                table[(work_window & mask) >> shift];
             
             // decode a symbol
             std::uint32_t taken = hit.num_bits;
@@ -105,14 +113,14 @@ __device__ __forceinline__ void decode_subsequence(
                 }
             }
             
-            UNIT_TYPE copy_next = next;
+            UNIT_TYPE copy_next = work_next;
             copy_next >>= bits_in_unit - taken;
 
-            next <<= taken;
-            window <<= taken;
+            work_next <<= taken;
+            work_window <<= taken;
             last_word_bit = at;
             at += taken;
-            window += copy_next;
+            work_window += copy_next;
             last_word_unit = current_unit;
         }
         
@@ -122,19 +130,21 @@ __device__ __forceinline__ void decode_subsequence(
         if (current_unit < subsequence_size) {
             ++in_pos;
             
-            window = in_ptr[in_pos];
+            window = next;
             next = in_ptr[in_pos + 1];
+            work_window = window;
+            work_next = next;
             
             if(at == bits_in_unit) {
                 at = 0;
             } else {
                 at -= bits_in_unit;
-                window <<= at;
-                next <<= at;
+                work_window <<= at;
+                work_next <<= at;
                 
                 UNIT_TYPE copy_next = in_ptr[in_pos + 1];
                 copy_next >>= bits_in_unit - at;
-                window += copy_next;
+                work_window += copy_next;
             }
         }
     }
@@ -227,8 +237,6 @@ __global__ void phase1_decode_subseq(
                     sync_points[current_subsequence] = sync_point;
                 }
             }
-            window = in_ptr[in_pos];
-            next = in_ptr[in_pos + 1];
             
             ++current_subsequence;
             ++current_subsequence_in_block;
@@ -324,8 +332,6 @@ __global__ void phase2_synchronise_blocks(
                 
                 sync_points[current_subsequence] = sync_point;
             }
-            window = in_ptr[in_pos];
-            next = in_ptr[in_pos + 1];
 
             ++current_subsequence;
             ++subsequences_processed;
