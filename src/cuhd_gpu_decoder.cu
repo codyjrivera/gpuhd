@@ -196,26 +196,30 @@ __global__ void phase1_decode_subseq(
         
         std::uint32_t subsequences_processed = 0;
         bool synchronised_flag = false;   
-        bool overflow_flag = false;
 
         while(subsequences_processed < blockDim.x) {
         
             if(!synchronised_flag
                 && current_subsequence_in_block < blockDim.x) {
-
-                decode_subsequence(subsequence_size, current_subsequence,
-                    mask, shift, last_at, in_pos, in_ptr, window, next,
-                    last_word_unit, last_word_bit, num_symbols,
-                    out_pos, out_ptr, next_out_pos, table, bits_in_unit,
-                    last_at, overflow_flag, false);
                 
                 if(subsequences_processed == 0) {
+                    decode_subsequence(subsequence_size, current_subsequence,
+                                       mask, shift, last_at, in_pos, in_ptr, window, next,
+                                       last_word_unit, last_word_bit, num_symbols,
+                                       out_pos, out_ptr, next_out_pos, table, bits_in_unit,
+                                       last_at, false, false);
+                
                     sync_points[current_subsequence] =
                         {last_word_unit, last_word_bit, num_symbols, 1};
-                    overflow_flag = true;
                 }
 
                 else {
+                    decode_subsequence(subsequence_size, current_subsequence,
+                                       mask, shift, last_at, in_pos, in_ptr, window, next,
+                                       last_word_unit, last_word_bit, num_symbols,
+                                       out_pos, out_ptr, next_out_pos, table, bits_in_unit,
+                                       last_at, true, false);
+
                     uint4 sync_point = sync_points[current_subsequence];
                     
                     // if sync point detected
