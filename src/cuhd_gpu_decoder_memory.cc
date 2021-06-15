@@ -51,7 +51,7 @@ void cuhd::CUHDGPUDecoderMemory::retrieve_sync_data() {
 
     // copy sync data to host
     cudaMemcpy(sequence_synced_host_, sequence_synced_device_,
-        num_blocks_ * sizeof(std::uint8_t), cudaMemcpyDeviceToHost);
+        num_blocks_ * sizeof(SYMBOL_TYPE), cudaMemcpyDeviceToHost);
     CUERR
 }
 
@@ -81,11 +81,11 @@ std::uint32_t* cuhd::CUHDGPUDecoderMemory::get_output_sizes() {
     return output_sizes_;
 }
 
-std::uint8_t* cuhd::CUHDGPUDecoderMemory::get_sequence_synced_device() {
+SYMBOL_TYPE* cuhd::CUHDGPUDecoderMemory::get_sequence_synced_device() {
     return sequence_synced_device_;
 }
 
-std::uint8_t* cuhd::CUHDGPUDecoderMemory::get_sequence_synced_host() {
+SYMBOL_TYPE* cuhd::CUHDGPUDecoderMemory::get_sequence_synced_host() {
     return sequence_synced_host_;   
 }
 

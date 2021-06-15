@@ -178,7 +178,7 @@ __global__ void phase1_decode_subseq(
 
         std::uint32_t out_pos = 0;
         std::uint32_t next_out_pos = 0;
-        std::uint8_t* out_ptr = 0;
+        SYMBOL_TYPE* out_ptr = 0;
 
         // sliding window
         UNIT_TYPE window = in_ptr[in_pos];
@@ -275,7 +275,7 @@ __global__ void phase2_synchronise_blocks(
 
         std::uint32_t out_pos = 0;
         std::uint32_t next_out_pos = 0;
-        std::uint8_t* out_ptr = 0;
+        SYMBOL_TYPE* out_ptr = 0;
         
         // jump to first sequence of the block
         std::uint32_t current_subsequence = (gid + 1) * blockDim.x;
@@ -461,8 +461,8 @@ void cuhd::CUHDGPUDecoder::decode(
     
     uint4* sync_info = reinterpret_cast<uint4*>(aux->get_sync_info());
     std::uint32_t* output_sizes = aux->get_output_sizes();
-    std::uint8_t* sequence_synced_device = aux->get_sequence_synced_device();
-    std::uint8_t* sequence_synced_host = aux->get_sequence_synced_host();
+    SYMBOL_TYPE* sequence_synced_device = aux->get_sequence_synced_device();
+    SYMBOL_TYPE* sequence_synced_host = aux->get_sequence_synced_host();
 
     size_t num_subseq = SDIV(input_size, preferred_subsequence_size);
     size_t num_sequences = SDIV(num_subseq, threads_per_block);

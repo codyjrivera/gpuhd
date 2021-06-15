@@ -29,8 +29,8 @@ namespace cuhd {
 
             cuhd::CUHDSubsequenceSyncPoint* get_sync_info();
             std::uint32_t* get_output_sizes();
-            std::uint8_t* get_sequence_synced_device();
-            std::uint8_t* get_sequence_synced_host();
+            SYMBOL_TYPE* get_sequence_synced_device();
+            SYMBOL_TYPE* get_sequence_synced_host();
             
         private:
             const size_t num_subseq_;
@@ -38,8 +38,8 @@ namespace cuhd {
 
             cuhd::CUHDSubsequenceSyncPoint* sync_info_;
             std::uint32_t* output_sizes_;
-            std::uint8_t* sequence_synced_device_;
-            std::uint8_t* sequence_synced_host_;
+            SYMBOL_TYPE* sequence_synced_device_;
+            SYMBOL_TYPE* sequence_synced_host_;
 
             bool is_allocated_;
     };
