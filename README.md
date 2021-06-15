@@ -2,7 +2,9 @@
 
 A Huffman decoder for processing raw (i.e. unpartitioned) Huffman encoded data on the GPU. It also includes a basic, sequential encoder.
 
-For further information, please refer to our [conference paper](https://doi.org/10.1145/3225058.3225076).
+For further information, please refer to their [conference paper](https://doi.org/10.1145/3225058.3225076).
+
+This repository allows arbitrary file input and fixes some bugs in the original code.
 
 ## Requirements
 
@@ -26,7 +28,7 @@ Please edit the Makefile:
 
 ### Test program
 
-The test program will generate a chunk of random, binomially distributed data, encode the data with a specified maximum codeword length and decode the data on the GPU.
+The test program will input a given number of bytes of data from a file, encode the data with a specified maximum codeword length, and decode the data on the GPU.
 
 #### Compiling the test program
 
@@ -36,7 +38,7 @@ To compile the test program, configure the Makefile as described above. Run:
 
 #### Running the test program
 
-`./bin/demo <compute device index> <size of input in megabytes>`
+`./bin/demo <compute device index> <input file> <size of input in bytes>`
 
 ### Compiling a static library
 
