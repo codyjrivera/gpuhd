@@ -29,19 +29,34 @@
 // performance parameter, high = high performance, low = low memory consumption
 #define DEVICE_PREF 9
 
+template <typename T>
+T get_le_uint(char* buffer) {
+    T result = 0;
+    for (unsigned int i = 0; i < sizeof(T); ++i) {
+        result += (uint8_t) buffer[i] << 8 * i;
+    }
+    return result;
+}
+
 int main(int argc, char** argv) {
     // name of the binary file
     const char* bin = argv[0];
+
+    if(argc != 4) {
+        std::cout << "USAGE: " << bin << " <compute device index> "
+        << "<input file> <number of bytes>" << std::endl;
+        return 1;
+    }
     
     // compute device to use
     const std::int64_t compute_device_id = atoi(argv[1]);
     
     // input size in MB
-    const long int size = atol(argv[3]);
+    const long int size_bytes = atol(argv[3]);
     
-    if(compute_device_id < 0 || size < 1) {
+    if(compute_device_id < 0 || size_bytes < 1) {
         std::cout << "USAGE: " << bin << " <compute device index> "
-        << "<input file (uint16)> <number of symbols>" << std::endl;
+        << "<input file> <number of bytes>" << std::endl;
         return 1;
     }
 
@@ -49,6 +64,7 @@ int main(int argc, char** argv) {
     std::vector<std::pair<std::string, size_t>> timings;
     
     // load data from file
+    const long int size = size_bytes / sizeof(SYMBOL_TYPE);
     std::vector<SYMBOL_TYPE> buffer;
     buffer.resize(size);
 
@@ -56,15 +72,15 @@ int main(int argc, char** argv) {
    
     std::ifstream inf(argv[2], std::ifstream::binary);
     //uint16_t inb;
-    char inb[1];
+    char inb[sizeof(SYMBOL_TYPE)];
     TIMER_START(timings, "loading data");
     for (long int i = 0; i < size; ++i) {
-        inf.read(inb, 1);
+        inf.read(inb, sizeof(SYMBOL_TYPE));
         if (!inf) {
             std::cerr << "Bad I/O" << std::endl;
             exit(1);
         }
-        buffer[i] = (uint8_t) inb[0]; // Least significant byte, little endian
+        buffer[i] = inb[0];//get_le_uint<SYMBOL_TYPE>(inb); // little endian
     }
     TIMER_STOP;
     inf.close();
@@ -99,23 +115,23 @@ int main(int argc, char** argv) {
         
     // select CUDA device
 	cudaSetDevice(compute_device_id);
-	CUERR
 
 	// define input and output buffers
     auto in_buf = std::make_shared<cuhd::CUHDInputBuffer>(
         reinterpret_cast<std::uint8_t*> (compressed.get()),
         enc_table->compressed_size * sizeof(UNIT_TYPE));
-        
+    
     auto out_buf = std::make_shared<cuhd::CUHDOutputBuffer>(size);
 
     auto gpu_in_buf = std::make_shared<cuhd::CUHDGPUInputBuffer>(in_buf);
     auto gpu_table = std::make_shared<cuhd::CUHDGPUCodetable>(dec_table);
     auto gpu_out_buf = std::make_shared<cuhd::CUHDGPUOutputBuffer>(out_buf);
-
+    
     // auxiliary memory for decoding
     auto gpu_decoder_memory = std::make_shared<cuhd::CUHDGPUDecoderMemory>(
         in_buf->get_compressed_size_units(),
         SUBSEQ_SIZE, NUM_THREADS);
+    CUERR;
     
     // allocate gpu input and output buffers
     TIMER_START(timings, "GPU buffer allocation")

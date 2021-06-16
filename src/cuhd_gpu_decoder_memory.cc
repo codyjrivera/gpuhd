@@ -37,11 +37,11 @@ void cuhd::CUHDGPUDecoderMemory::allocate() {
 
     // flags for indicating inter-sequence synchronisation
     cudaMalloc((void**) &sequence_synced_device_,
-        num_blocks_ * sizeof(std::uint8_t));
+        num_blocks_ * sizeof(SYMBOL_TYPE));
     CUERR
 
     cudaMallocHost((void**) &sequence_synced_host_,
-        num_blocks_ * sizeof(std::uint8_t));
+        num_blocks_ * sizeof(SYMBOL_TYPE));
     CUERR
 
     is_allocated_ = true;

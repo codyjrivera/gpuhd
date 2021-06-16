@@ -6,7 +6,7 @@ CC = g++
 NVCC = nvcc
 AR = ar
 CFLAGS = -std=c++17 -O3 -march=native -Wall -Werror
-NVCC_FLAGS = --std=c++14 -O3 -Wno-deprecated-gpu-targets $(NVCC_ARCH)
+NVCC_FLAGS = -G -g --std=c++14 -O3 -Wno-deprecated-gpu-targets $(NVCC_ARCH)
 RM_FLAGS = -f
 
 INC_DIR = include
