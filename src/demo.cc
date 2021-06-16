@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
             std::cerr << "Bad I/O" << std::endl;
             exit(1);
         }
-        buffer[i] = inb[0];//get_le_uint<SYMBOL_TYPE>(inb); // little endian
+        buffer[i] = get_le_uint<SYMBOL_TYPE>(inb); // little endian
     }
     TIMER_STOP;
     inf.close();
@@ -116,6 +116,10 @@ int main(int argc, char** argv) {
     // select CUDA device
 	cudaSetDevice(compute_device_id);
 
+    std::cout << "CR: "
+              << (double) (size * sizeof(SYMBOL_TYPE)) / (double) (enc_table->compressed_size * sizeof(UNIT_TYPE))
+              << std::endl;
+    
 	// define input and output buffers
     auto in_buf = std::make_shared<cuhd::CUHDInputBuffer>(
         reinterpret_cast<std::uint8_t*> (compressed.get()),
