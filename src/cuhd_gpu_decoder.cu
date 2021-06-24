@@ -444,6 +444,8 @@ __global__ void phase4_decode_write_output(
     }
 }
 
+int invocation_count = 0;
+
 void cuhd::CUHDGPUDecoder::decode(
     std::shared_ptr<cuhd::CUHDGPUInputBuffer> input,
     size_t input_size,
@@ -469,6 +471,7 @@ void cuhd::CUHDGPUDecoder::decode(
     
     const std::uint32_t bits_in_unit = sizeof(UNIT_TYPE) * 8;
 
+    auto p1Before = std::chrono::steady_clock::now();
     // launch phase 1 (intra-sequence synchronisation)
     phase1_decode_subseq<<<num_sequences, threads_per_block>>>(
         preferred_subsequence_size,
@@ -478,11 +481,14 @@ void cuhd::CUHDGPUDecoder::decode(
         table_ptr,
         sync_info,
         bits_in_unit);
+    cudaDeviceSynchronize();
     CUERR
+    auto p1After = std::chrono::steady_clock::now();
     
     // launch phase 2 (inter-sequence synchronisation)
     bool blocks_synchronised = true;
-    
+
+    auto p2Before = std::chrono::steady_clock::now();
     do {
         phase2_synchronise_blocks<<<num_sequences, threads_per_block>>>(
                 preferred_subsequence_size,
@@ -518,8 +524,10 @@ void cuhd::CUHDGPUDecoder::decode(
         }
         
     } while(!blocks_synchronised);
+    auto p2After = std::chrono::steady_clock::now();
     
     // launch phase 3 (parallel prefix sum)
+    auto p3Before = std::chrono::steady_clock::now();
     thrust::device_ptr<std::uint32_t> thrust_sync_points(output_sizes);
 
     phase3_copy_num_symbols_from_sync_points_to_aux<<<
@@ -531,8 +539,11 @@ void cuhd::CUHDGPUDecoder::decode(
 
     phase3_copy_num_symbols_from_aux_to_sync_points<<<
         num_sequences, threads_per_block>>>(num_subseq, sync_info, output_sizes);
+    cudaDeviceSynchronize();
     CUERR
-    
+    auto p3After = std::chrono::steady_clock::now();
+
+    auto p4Before = std::chrono::steady_clock::now();
     // launch phase 4 (final decoding)
     phase4_decode_write_output<<<num_sequences, threads_per_block>>>(
             preferred_subsequence_size,
@@ -546,5 +557,19 @@ void cuhd::CUHDGPUDecoder::decode(
             bits_in_unit);
     cudaDeviceSynchronize();
     CUERR
+    auto p4After = std::chrono::steady_clock::now();
+
+    ++invocation_count;
+    if (invocation_count == 2)
+        std::cout << "Detailed Profile (us):"
+                  << std::endl << "Phase 1: "
+                  << std::chrono::duration_cast<std::chrono::microseconds>(p1After - p1Before).count()
+                  << std::endl << "Phase 2: "
+                  << std::chrono::duration_cast<std::chrono::microseconds>(p2After - p2Before).count()
+                  << std::endl << "Phase 3: "
+                  << std::chrono::duration_cast<std::chrono::microseconds>(p3After - p3Before).count()
+                  << std::endl << "Phase 4: "
+                  << std::chrono::duration_cast<std::chrono::microseconds>(p4After - p4Before).count()
+                  << std::endl;
 }
 
