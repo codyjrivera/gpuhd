@@ -544,6 +544,7 @@ void cuhd::CUHDGPUDecoder::decode(
             table_ptr,
             sync_info,
             bits_in_unit);
+    cudaDeviceSynchronize();
     CUERR
 }
 
