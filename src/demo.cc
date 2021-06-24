@@ -157,7 +157,12 @@ int main(int argc, char** argv) {
     TIMER_STOP
     
     // decode
-    int constexpr NROUNDS = 1;                       
+        cuhd::CUHDGPUDecoder::decode(
+            gpu_in_buf, in_buf->get_compressed_size_units(),
+            gpu_out_buf, out_buf->get_uncompressed_size(),
+            gpu_table, gpu_decoder_memory,
+            MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS);
+    int constexpr NROUNDS = 10;                       
     TIMER_START(timings, "decoding")
         for (int i = 0; i < NROUNDS; ++i) {
         cuhd::CUHDGPUDecoder::decode(
@@ -180,7 +185,7 @@ int main(int argc, char** argv) {
             std::cout << i.first << ".. "  << timeUs
                       << "µs" << std::endl;
             double thruGbs = ((double)(size * sizeof(SYMBOL_TYPE))
-                              / (timeUs * 1e-6)) / 1e9;
+                              / (timeUs * 1e-6)) / (1024.0 * 1024.0 * 1024.0);
             std::cout << "throughput: " << thruGbs
                       << " GB/s" << std::endl;
         }
