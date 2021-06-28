@@ -42,6 +42,12 @@ __device__ __forceinline__ void decode_subsequence(
     // local unit registers
     UNIT_TYPE work_window = window;
     UNIT_TYPE work_next = next;
+    
+    // Output buffering
+    DECODE_OUT_TYPE out_buffer;
+    const std::uint32_t buffer_cap = sizeof(DECODE_OUT_TYPE) / sizeof(SYMBOL_TYPE);
+    std::uint32_t out_buffer_count = 0;
+    std::uint32_t out_buffer_pos = 0;
 
     // current unit in this subsequence
     std::uint32_t current_unit = 0;
@@ -117,7 +123,24 @@ __device__ __forceinline__ void decode_subsequence(
             ++num_symbols_l;
 
             if(write_output) {
-                if(out_pos < next_out_pos) {
+                if (out_pos + buffer_cap <= next_out_pos && out_pos % buffer_cap == 0) {
+                    out_buffer_pos = out_pos / buffer_cap;
+                    out_buffer.x = hit.symbol;
+                    out_buffer_count = 1;
+                    ++out_pos;
+                } else if (out_buffer_count > 0 && out_buffer_count < buffer_cap) {
+                    switch (out_buffer_count) {
+                    case 1: 
+                        out_buffer.y = hit.symbol;
+                        break;
+                    } // TODO add for larger vectors
+                    ++out_buffer_count;
+                    ++out_pos;
+                    if (out_buffer_count == buffer_cap) {
+                        ((DECODE_OUT_TYPE*)out_ptr)[out_buffer_pos] = out_buffer; 
+                        out_buffer_count = 0;
+                    }
+                } else if (out_pos < next_out_pos) {
                     out_ptr[out_pos] = hit.symbol;
                     ++out_pos;
                 }
