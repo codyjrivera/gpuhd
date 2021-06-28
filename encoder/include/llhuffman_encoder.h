@@ -39,7 +39,7 @@ namespace llhuff {
                 std::shared_ptr<LLHuffmanEncoderTable> encoder_table);
 
             static std::shared_ptr<cuhd::CUHDCodetable> get_decoder_table(
-                std::shared_ptr<LLHuffmanEncoderTable> enc_table);
+                std::shared_ptr<LLHuffmanEncoderTable> enc_table, int cache_len = 9);
 
         private:
             struct Coin {

@@ -54,6 +54,8 @@ int main(int argc, char** argv) {
     // input size in MB
     const long int size_bytes = atol(argv[3]);
     
+    const int cache_len = 9;
+
     if(compute_device_id < 0 || size_bytes < 1) {
         std::cout << "USAGE: " << bin << " <compute device index> "
         << "<input file> <number of bytes>" << std::endl;
@@ -100,7 +102,7 @@ int main(int argc, char** argv) {
         enc_table = llhuff::LLHuffmanEncoder::get_encoder_table(lengths);
     
         // generate decoder table
-        dec_table = llhuff::LLHuffmanEncoder::get_decoder_table(enc_table);
+        dec_table = llhuff::LLHuffmanEncoder::get_decoder_table(enc_table, cache_len);
     TIMER_STOP
     
     // buffer for compressed data
@@ -160,7 +162,7 @@ int main(int argc, char** argv) {
         cuhd::CUHDGPUDecoder::decode(
             gpu_in_buf, in_buf->get_compressed_size_units(),
             gpu_out_buf, out_buf->get_uncompressed_size(),
-            gpu_table, gpu_decoder_memory,
+            gpu_table, cache_len, gpu_decoder_memory,
             MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS);
     int constexpr NROUNDS = 10;                       
     TIMER_START(timings, "decoding")
@@ -168,7 +170,7 @@ int main(int argc, char** argv) {
         cuhd::CUHDGPUDecoder::decode(
             gpu_in_buf, in_buf->get_compressed_size_units(),
             gpu_out_buf, out_buf->get_uncompressed_size(),
-            gpu_table, gpu_decoder_memory,
+            gpu_table, cache_len, gpu_decoder_memory,
             MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS);
         }
     TIMER_STOP

@@ -15,12 +15,21 @@
 #include "cuhd_codetable.h"
 
 namespace cuhd {
-    class CUHDGPUCodetable : public CUHDGPUMemoryBuffer<CUHDCodetableItemSingle> {
-        public:
-            CUHDGPUCodetable(std::shared_ptr<CUHDCodetable> codetable);
+    class CUHDGPUCodetable {
+    public:
+        CUHDGPUCodetable(std::shared_ptr<CUHDCodetable> codetable);
 
-            private:
-                std::shared_ptr<CUHDCodetable> table_;
+        CUHDCodetableItemSingle* get_shared();
+        CUHDCodetableItemSingle* get();
+        
+        void allocate();
+        void free();
+        void cpy_host_to_device();
+        void cpy_device_to_host();
+
+    private:
+        CUHDGPUMemoryBuffer<CUHDCodetableItemSingle> shared_table_;
+        CUHDGPUMemoryBuffer<CUHDCodetableItemSingle> table_;
     };
 }
 

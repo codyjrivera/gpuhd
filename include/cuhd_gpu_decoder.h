@@ -22,14 +22,15 @@ namespace cuhd {
     class CUHDGPUDecoder {
         public:
             static void decode(std::shared_ptr<cuhd::CUHDGPUInputBuffer> input,
-                size_t input_size,
-                std::shared_ptr<cuhd::CUHDGPUOutputBuffer> output,
-                size_t output_size,
-                std::shared_ptr<cuhd::CUHDGPUCodetable> table,
-                std::shared_ptr<cuhd::CUHDGPUDecoderMemory> aux,
-                size_t max_codeword_length,
-                size_t preferred_subsequence_size,
-                size_t threads_per_block);
+                               size_t input_size,
+                               std::shared_ptr<cuhd::CUHDGPUOutputBuffer> output,
+                               size_t output_size,
+                               std::shared_ptr<cuhd::CUHDGPUCodetable> table,
+                               int cache_len,
+                               std::shared_ptr<cuhd::CUHDGPUDecoderMemory> aux,
+                               size_t max_codeword_length,
+                               size_t preferred_subsequence_size,
+                               size_t threads_per_block);
     };
 }
 

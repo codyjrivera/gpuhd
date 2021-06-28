@@ -24,23 +24,31 @@ namespace cuhd {
 
     class CUHDCodetable {
         public:
-            CUHDCodetable(size_t num_entries);
+        CUHDCodetable(size_t cache_len, size_t num_entries);
 
-            size_t get_size();
-            size_t get_num_entries();
-            size_t get_max_codeword_length();
-            
-            CUHDCodetableItemSingle* get();
-            
+        size_t get_shared_size();
+        size_t get_cache_len();
+
+        size_t get_size();
+        size_t get_num_entries();
+        size_t get_max_codeword_length();
+        
+        CUHDCodetableItemSingle* get_shared();
+        CUHDCodetableItemSingle* get();
+        
         private:
             
-            // total number of rows
-            size_t size_;
+        // longest codeword cached in shared memory
+        size_t cache_len_;
 
-            // actual number of items
-            size_t num_entries_;
-
-            cuhd_buf(CUHDCodetableItemSingle, table_);
+        // total number of rows
+        size_t size_;
+        
+        // actual number of items
+        size_t num_entries_;
+        
+        cuhd_buf(CUHDCodetableItemSingle, shared_table_);
+        cuhd_buf(CUHDCodetableItemSingle, table_);
     };
 }
 #endif /* CUHD_CODETABLE_H_ */

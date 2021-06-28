@@ -16,7 +16,9 @@
 __device__ __forceinline__ void decode_subsequence(
     std::uint32_t subsequence_size,
     std::uint32_t current_subsequence,
+    UNIT_TYPE shared_mask,
     UNIT_TYPE mask,
+    std::uint32_t shared_shift,
     std::uint32_t shift,
     std::uint32_t start_bit,
     std::uint32_t &in_pos,
@@ -29,6 +31,8 @@ __device__ __forceinline__ void decode_subsequence(
     std::uint32_t &out_pos,
     SYMBOL_TYPE* out_ptr,
     std::uint32_t &next_out_pos,
+    const cuhd::CUHDCodetableItemSingle* __restrict__ shared_table,
+    const int cache_len,
     const cuhd::CUHDCodetableItemSingle* __restrict__ table,
     const std::uint32_t bits_in_unit,
     std::uint32_t &last_at,
@@ -60,7 +64,9 @@ __device__ __forceinline__ void decode_subsequence(
         work_window += copy_next;
 
         // decode first symbol
-        std::uint32_t taken = table[(work_window & mask) >> shift].num_bits;
+        std::uint32_t taken = shared_table[(work_window & shared_mask) >> shared_shift].num_bits;
+        if (taken == 0)
+            taken = table[(work_window & mask) >> shift].num_bits;
 
         copy_next = work_next;
         copy_next >>= bits_in_unit - taken;
@@ -99,8 +105,12 @@ __device__ __forceinline__ void decode_subsequence(
     while(current_unit < subsequence_size) {
         
         while(at < bits_in_unit) {
-            const cuhd::CUHDCodetableItemSingle hit =
-                table[(work_window & mask) >> shift];
+            cuhd::CUHDCodetableItemSingle hit =
+                shared_table[(work_window & shared_mask) >> shared_shift];
+            
+            if (hit.num_bits == 0) {
+                hit = table[(work_window & mask) >> shift];
+            }
             
             // decode a symbol
             std::uint32_t taken = hit.num_bits;
@@ -158,10 +168,21 @@ __global__ void phase1_decode_subseq(
     std::uint32_t total_num_subsequences,
     std::uint32_t table_size,
     const UNIT_TYPE* __restrict__ in_ptr,
-    const cuhd::CUHDCodetableItemSingle* __restrict__ table,
+    cuhd::CUHDCodetableItemSingle* global_shared_table,
+    const int cache_len,
+    cuhd::CUHDCodetableItemSingle* table,
     uint4* sync_points,
     const std::uint32_t bits_in_unit) {
-    
+
+    extern __shared__ cuhd::CUHDCodetableItemSingle shared_table[];
+
+    // Loads table
+    std::uint32_t shared_table_size = 1 << cache_len;
+    for (std::uint32_t i = threadIdx.x; i < shared_table_size; i += blockDim.x) {
+        shared_table[i] = global_shared_table[i];
+    }
+    __syncthreads();
+        
     const std::uint32_t gid = blockDim.x * blockIdx.x + threadIdx.x;
     
     if(gid < total_num_subsequences) {
@@ -171,9 +192,11 @@ __global__ void phase1_decode_subseq(
         std::uint32_t in_pos = gid * subsequence_size;
 
         // mask
+        const UNIT_TYPE shared_mask = ~(((UNIT_TYPE) (0) - 1) >> cache_len);
         const UNIT_TYPE mask = ~(((UNIT_TYPE) (0) - 1) >> table_size);
 
         // shift right
+        const std::uint32_t shared_shift = bits_in_unit - cache_len;
         const std::uint32_t shift = bits_in_unit - table_size;
 
         std::uint32_t out_pos = 0;
@@ -204,10 +227,10 @@ __global__ void phase1_decode_subseq(
                 
                 if(subsequences_processed == 0) {
                     decode_subsequence(subsequence_size, current_subsequence,
-                                       mask, shift, last_at, in_pos, in_ptr, window, next,
+                                       shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr, window, next,
                                        last_word_unit, last_word_bit, num_symbols,
-                                       out_pos, out_ptr, next_out_pos, table, bits_in_unit,
-                                       last_at, false, false);
+                                       out_pos, out_ptr, next_out_pos, shared_table, cache_len,
+                                       table, bits_in_unit, last_at, false, false);
                 
                     sync_points[current_subsequence] =
                         {last_word_unit, last_word_bit, num_symbols, 1};
@@ -215,10 +238,10 @@ __global__ void phase1_decode_subseq(
 
                 else {
                     decode_subsequence(subsequence_size, current_subsequence,
-                                       mask, shift, last_at, in_pos, in_ptr, window, next,
+                                       shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr, window, next,
                                        last_word_unit, last_word_bit, num_symbols,
-                                       out_pos, out_ptr, next_out_pos, table, bits_in_unit,
-                                       last_at, true, false);
+                                       out_pos, out_ptr, next_out_pos, shared_table, cache_len,
+                                       table, bits_in_unit, last_at, true, false);
 
                     uint4 sync_point = sync_points[current_subsequence];
                     
@@ -257,20 +280,33 @@ __global__ void phase2_synchronise_blocks(
     std::uint32_t table_size,
     std::uint32_t num_blocks,
     const UNIT_TYPE* __restrict__ in_ptr,
-    const cuhd::CUHDCodetableItemSingle* __restrict__ table,
+    cuhd::CUHDCodetableItemSingle* global_shared_table,
+    const int cache_len,
+    cuhd::CUHDCodetableItemSingle* table,
     uint4* sync_points,
     SYMBOL_TYPE* block_synchronised,
     const std::uint32_t bits_in_unit) {
     
+    extern __shared__ cuhd::CUHDCodetableItemSingle shared_table[];
+
+    // Loads table
+    std::uint32_t shared_table_size = 1 << cache_len;
+    for (std::uint32_t i = threadIdx.x; i < shared_table_size; i += blockDim.x) {
+        shared_table[i] = global_shared_table[i];
+    }
+    __syncthreads();
+
     const std::uint32_t gid = blockDim.x * blockIdx.x + threadIdx.x;
     const std::uint32_t num_of_seams = num_blocks - 1;
 
     if(gid < num_of_seams) {
     
         // mask
+        const UNIT_TYPE shared_mask = ~(((UNIT_TYPE) (0) - 1) >> cache_len);
         const UNIT_TYPE mask = ~(((UNIT_TYPE) (0) - 1) >> table_size);
 
-        // shift
+        // shift right
+        const std::uint32_t shared_shift = bits_in_unit - cache_len;
         const std::uint32_t shift = bits_in_unit - table_size;
 
         std::uint32_t out_pos = 0;
@@ -308,10 +344,10 @@ __global__ void phase2_synchronise_blocks(
         
             if(!synchronised_flag) {
                 decode_subsequence(subsequence_size, current_subsequence,
-                    mask, shift, last_at, in_pos, in_ptr,
+                    shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr,
                     window, next, last_word_unit, last_word_bit, num_symbols,
-                    out_pos, out_ptr, next_out_pos, table, bits_in_unit,
-                    last_at, true, false);
+                    out_pos, out_ptr, next_out_pos, shared_table, cache_len, 
+                    table, bits_in_unit, last_at, true, false);
                 
                 sync_point = sync_points[current_subsequence];
                 
@@ -376,19 +412,32 @@ __global__ void phase4_decode_write_output(
     const UNIT_TYPE* __restrict__ in_ptr,
     SYMBOL_TYPE* out_ptr,
     std::uint32_t output_size,
+    cuhd::CUHDCodetableItemSingle* global_shared_table,
+    const int cache_len,
     cuhd::CUHDCodetableItemSingle* table,
     const uint4* __restrict__ sync_points,
     const std::uint32_t bits_in_unit) {
+
+    extern __shared__ cuhd::CUHDCodetableItemSingle shared_table[];
+
+    // Loads table
+    std::uint32_t shared_table_size = 1 << cache_len;
+    for (std::uint32_t i = threadIdx.x; i < shared_table_size; i += blockDim.x) {
+        shared_table[i] = global_shared_table[i];
+    }
+    __syncthreads();
     
     const std::uint32_t gid = blockDim.x * blockIdx.x + threadIdx.x;
 
     if(gid < total_num_subsequences) {
         
         // mask
+        const UNIT_TYPE shared_mask = ~(((UNIT_TYPE) (0) - 1) >> cache_len);
         const UNIT_TYPE mask = ~(((UNIT_TYPE) (0) - 1) >> table_size);
 
-        // shift
-        const size_t shift = bits_in_unit - table_size;
+        // shift right
+        const std::uint32_t shared_shift = bits_in_unit - cache_len;
+        const std::uint32_t shift = bits_in_unit - table_size;
 
         // start bit of last codeword in this subsequence
         std::uint32_t last_word_unit = 0;
@@ -437,10 +486,11 @@ __global__ void phase4_decode_write_output(
         }
 
         // overflow from previous subsequence, decode, write output
-        decode_subsequence(subsequence_size, current_subsequence, mask, shift,
+        decode_subsequence(subsequence_size, current_subsequence, shared_mask, mask, shared_shift, shift,
             start, in_pos, in_ptr, window, next,
             last_word_unit, last_word_bit, num_symbols, out_pos, out_ptr,
-            next_out_pos, table, bits_in_unit, last_at, true, true);
+            next_out_pos, shared_table, cache_len, table,
+            bits_in_unit, last_at, true, true);
     }
 }
 
@@ -452,6 +502,7 @@ void cuhd::CUHDGPUDecoder::decode(
     std::shared_ptr<cuhd::CUHDGPUOutputBuffer> output,
     size_t output_size,
     std::shared_ptr<cuhd::CUHDGPUCodetable> table,
+    int cache_len,
     std::shared_ptr<cuhd::CUHDGPUDecoderMemory> aux,
     size_t max_codeword_length,
     size_t preferred_subsequence_size,
@@ -459,7 +510,11 @@ void cuhd::CUHDGPUDecoder::decode(
     
     UNIT_TYPE* in_ptr = input->get();
     SYMBOL_TYPE* out_ptr = output->get();
+    cuhd::CUHDCodetableItemSingle* table_shared_ptr = table->get_shared();
     cuhd::CUHDCodetableItemSingle* table_ptr = table->get();
+
+    // Shared memory configuration
+    size_t shared_table_size = (1 << cache_len);
     
     uint4* sync_info = reinterpret_cast<uint4*>(aux->get_sync_info());
     std::uint32_t* output_sizes = aux->get_output_sizes();
@@ -473,11 +528,13 @@ void cuhd::CUHDGPUDecoder::decode(
 
     auto p1Before = std::chrono::steady_clock::now();
     // launch phase 1 (intra-sequence synchronisation)
-    phase1_decode_subseq<<<num_sequences, threads_per_block>>>(
+    phase1_decode_subseq<<<num_sequences, threads_per_block, shared_table_size * sizeof(CUHDCodetableItemSingle)>>>(
         preferred_subsequence_size,
         num_subseq,
         max_codeword_length,
         in_ptr,
+        table_shared_ptr,
+        cache_len,
         table_ptr,
         sync_info,
         bits_in_unit);
@@ -490,12 +547,14 @@ void cuhd::CUHDGPUDecoder::decode(
 
     auto p2Before = std::chrono::steady_clock::now();
     do {
-        phase2_synchronise_blocks<<<num_sequences, threads_per_block>>>(
+        phase2_synchronise_blocks<<<num_sequences, threads_per_block, shared_table_size * sizeof(CUHDCodetableItemSingle)>>>(
                 preferred_subsequence_size,
                 num_subseq,
                 max_codeword_length,
                 num_sequences,
                 in_ptr,
+                table_shared_ptr,
+                cache_len,
                 table_ptr,
                 sync_info,
                 sequence_synced_device,
@@ -545,13 +604,15 @@ void cuhd::CUHDGPUDecoder::decode(
 
     auto p4Before = std::chrono::steady_clock::now();
     // launch phase 4 (final decoding)
-    phase4_decode_write_output<<<num_sequences, threads_per_block>>>(
+    phase4_decode_write_output<<<num_sequences, threads_per_block, shared_table_size * sizeof(CUHDCodetableItemSingle)>>>(
             preferred_subsequence_size,
             num_subseq,
             max_codeword_length,
             in_ptr,
             out_ptr,
             output_size,
+            table_shared_ptr,
+            cache_len,
             table_ptr,
             sync_info,
             bits_in_unit);

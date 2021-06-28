@@ -244,11 +244,12 @@ void llhuff::LLHuffmanEncoder::encode_memory(UNIT_TYPE* out, size_t size_out,
 
 std::shared_ptr<cuhd::CUHDCodetable>
     llhuff::LLHuffmanEncoder::get_decoder_table(
-    std::shared_ptr<llhuff::LLHuffmanEncoderTable> enc_table) {
+        std::shared_ptr<llhuff::LLHuffmanEncoderTable> enc_table, int cache_len /*= 9*/) {
 
     std::shared_ptr<cuhd::CUHDCodetable> table
-        = std::make_shared<cuhd::CUHDCodetable>(enc_table->dict.size());
+        = std::make_shared<cuhd::CUHDCodetable>(cache_len, enc_table->dict.size());
 
+    cuhd::CUHDCodetableItemSingle* dec_shared_ptr = table->get_shared();
     cuhd::CUHDCodetableItemSingle* dec_ptr = table->get();
     
     for(auto &i: enc_table->dict) {    
@@ -261,6 +262,18 @@ std::shared_ptr<cuhd::CUHDCodetable>
         
         for(size_t j = 0; j < num_entries; ++j)
             dec_ptr[(codeword << shift) + j] = {length, symbol};
+
+        const UNIT_TYPE adjusted_codeword = codeword >> ((length > cache_len) ? length - cache_len : 0);
+        if (length <= cache_len) {
+            const size_t shift       = cache_len - length;
+            const size_t num_entries = 1 << shift;
+
+            for(size_t j = 0; j < num_entries; ++j)
+                dec_shared_ptr[(adjusted_codeword << shift) + j] = {length, symbol};
+
+        } else {
+            dec_shared_ptr[adjusted_codeword] = {0, 1};
+        }
     }
     
     return table;
