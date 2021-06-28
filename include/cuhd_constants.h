@@ -18,7 +18,7 @@
 #define UNIT_TYPE std::uint32_t
 
 // data type of a symbol
-#define SYMBOL_TYPE std::uint16_t
+#define SYMBOL_TYPE std::uint8_t
 
 // data type for storing the bit length of codewords
 #define BIT_COUNT_TYPE SYMBOL_TYPE // for aligned shared memory reads
