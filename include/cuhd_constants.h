@@ -23,7 +23,9 @@
 // data type for storing the bit length of codewords
 #define BIT_COUNT_TYPE SYMBOL_TYPE // for aligned shared memory reads
 
-#define DECODE_OUT_TYPE ushort2
+#define DECODE_OUT_TYPE ushort4
+
+#define DECODE_BUFFER_CAP 4
 
 #endif /* CUHD_CONSTANTS_H_ */
 

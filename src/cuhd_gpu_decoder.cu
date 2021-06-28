@@ -44,8 +44,7 @@ __device__ __forceinline__ void decode_subsequence(
     UNIT_TYPE work_next = next;
     
     // Output buffering
-    DECODE_OUT_TYPE out_buffer;
-    const std::uint32_t buffer_cap = sizeof(DECODE_OUT_TYPE) / sizeof(SYMBOL_TYPE);
+    DECODE_OUT_TYPE out_buffer; // of size DECODE_BUFFER_CAP
     std::uint32_t out_buffer_count = 0;
     std::uint32_t out_buffer_pos = 0;
 
@@ -123,20 +122,33 @@ __device__ __forceinline__ void decode_subsequence(
             ++num_symbols_l;
 
             if(write_output) {
-                if (out_pos + buffer_cap <= next_out_pos && out_pos % buffer_cap == 0) {
-                    out_buffer_pos = out_pos / buffer_cap;
+                if (out_pos + DECODE_BUFFER_CAP <= next_out_pos && out_pos % DECODE_BUFFER_CAP == 0) {
+                    out_buffer_pos = out_pos / DECODE_BUFFER_CAP;
                     out_buffer.x = hit.symbol;
                     out_buffer_count = 1;
                     ++out_pos;
-                } else if (out_buffer_count > 0 && out_buffer_count < buffer_cap) {
+                } else if (out_buffer_count > 0 && out_buffer_count < DECODE_BUFFER_CAP) {
+                    // Perhaps replace with constexpr if or something else nicer
                     switch (out_buffer_count) {
+//#if DECODE_BUFFER_CAP <= 2
                     case 1: 
                         out_buffer.y = hit.symbol;
                         break;
+//#endif
+//#if DECODE_BUFFER_CAP <= 3
+                    case 2: 
+                        out_buffer.z = hit.symbol;
+                        break;
+//#endif
+//#if DECODE_BUFFER_CAP <= 4
+                    case 3: 
+                        out_buffer.w = hit.symbol;
+                        break;
+//#endif 
                     } // TODO add for larger vectors
                     ++out_buffer_count;
                     ++out_pos;
-                    if (out_buffer_count == buffer_cap) {
+                    if (out_buffer_count == DECODE_BUFFER_CAP) {
                         ((DECODE_OUT_TYPE*)out_ptr)[out_buffer_pos] = out_buffer; 
                         out_buffer_count = 0;
                     }
