@@ -44,7 +44,7 @@ __device__ __forceinline__ void decode_subsequence(
     UNIT_TYPE work_next = next;
     
     // Output buffering
-    DECODE_OUT_TYPE out_buffer; // of size DECODE_BUFFER_CAP
+    SYMBOL_TYPE out_buffer[DECODE_BUFFER_CAP];
     std::uint32_t out_buffer_count = 0;
     std::uint32_t out_buffer_pos = 0;
 
@@ -123,33 +123,36 @@ __device__ __forceinline__ void decode_subsequence(
 
             if(write_output) {
                 if (out_pos + DECODE_BUFFER_CAP <= next_out_pos && out_pos % DECODE_BUFFER_CAP == 0) {
-                    out_buffer_pos = out_pos / DECODE_BUFFER_CAP;
-                    out_buffer.x = hit.symbol;
+                    out_buffer_pos = out_pos / 16;
+                    out_buffer[0] = hit.symbol;
                     out_buffer_count = 1;
                     ++out_pos;
                 } else if (out_buffer_count > 0 && out_buffer_count < DECODE_BUFFER_CAP) {
-                    // Perhaps replace with constexpr if or something else nicer
+                    // May the compiler be smart enough to understand what I'm trying to do...
                     switch (out_buffer_count) {
-//#if DECODE_BUFFER_CAP <= 2
-                    case 1: 
-                        out_buffer.y = hit.symbol;
-                        break;
-//#endif
-//#if DECODE_BUFFER_CAP <= 3
-                    case 2: 
-                        out_buffer.z = hit.symbol;
-                        break;
-//#endif
-//#if DECODE_BUFFER_CAP <= 4
-                    case 3: 
-                        out_buffer.w = hit.symbol;
-                        break;
-//#endif 
-                    } // TODO add for larger vectors
+#define CASE_CODE(n) case n: out_buffer[n] = hit.symbol; break
+                        CASE_CODE(1);
+                        CASE_CODE(2);
+                        CASE_CODE(3);
+                        CASE_CODE(4);
+                        CASE_CODE(5);
+                        CASE_CODE(6);
+                        CASE_CODE(7);
+                        CASE_CODE(8);
+                        CASE_CODE(9);
+                        CASE_CODE(10);
+                        CASE_CODE(11);
+                        CASE_CODE(12);
+                        CASE_CODE(13);
+                        CASE_CODE(14);
+                        CASE_CODE(15);
+                    }
                     ++out_buffer_count;
                     ++out_pos;
                     if (out_buffer_count == DECODE_BUFFER_CAP) {
-                        ((DECODE_OUT_TYPE*)out_ptr)[out_buffer_pos] = out_buffer; 
+#pragma unroll
+                        for (int i = 0; i < (DECODE_BUFFER_CAP * sizeof(SYMBOL_TYPE)) / sizeof(DECODE_OUT_TYPE); ++i)
+                            ((DECODE_OUT_TYPE*)out_ptr)[out_buffer_pos + i] = ((DECODE_OUT_TYPE*)out_buffer)[i]; 
                         out_buffer_count = 0;
                     }
                 } else if (out_pos < next_out_pos) {

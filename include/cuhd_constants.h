@@ -23,9 +23,10 @@
 // data type for storing the bit length of codewords
 #define BIT_COUNT_TYPE SYMBOL_TYPE // for aligned shared memory reads
 
-#define DECODE_OUT_TYPE ushort4
+#define DECODE_OUT_TYPE uint4 // Just need a 128-bit type to instruct nvcc to generate
+                              // the appropriate store
 
-#define DECODE_BUFFER_CAP 4
+#define DECODE_BUFFER_CAP 16
 
 #endif /* CUHD_CONSTANTS_H_ */
 
