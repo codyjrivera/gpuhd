@@ -29,7 +29,9 @@ namespace cuhd {
                 std::shared_ptr<cuhd::CUHDGPUDecoderMemory> aux,
                 size_t max_codeword_length,
                 size_t preferred_subsequence_size,
-                size_t threads_per_block);
+                size_t threads_per_block,
+                bool write_mode = true,
+                SYMBOL_TYPE mode_symbol = 0);
     };
 }
 

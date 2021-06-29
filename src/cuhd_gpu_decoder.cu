@@ -11,6 +11,7 @@
 #include "cuhd_gpu_decoder.h"
 
 #include <thrust/device_ptr.h>
+#include <thrust/fill.h>
 #include <thrust/scan.h>
 
 __device__ __forceinline__ void decode_subsequence(
@@ -33,7 +34,9 @@ __device__ __forceinline__ void decode_subsequence(
     const std::uint32_t bits_in_unit,
     std::uint32_t &last_at,
     bool overflow,
-    bool write_output) {
+    bool write_output,
+    const bool write_mode=true,
+    const SYMBOL_TYPE mode_symbol=0) {
 
     // local unit registers
     UNIT_TYPE work_window = window;
@@ -108,7 +111,9 @@ __device__ __forceinline__ void decode_subsequence(
 
             if(write_output) {
                 if(out_pos < next_out_pos) {
-                    out_ptr[out_pos] = hit.symbol;
+                    if (hit.symbol != mode_symbol || write_mode) {
+                        out_ptr[out_pos] = hit.symbol;
+                    }
                     ++out_pos;
                 }
             }
@@ -378,7 +383,9 @@ __global__ void phase4_decode_write_output(
     std::uint32_t output_size,
     cuhd::CUHDCodetableItemSingle* table,
     const uint4* __restrict__ sync_points,
-    const std::uint32_t bits_in_unit) {
+    const std::uint32_t bits_in_unit,
+    const bool write_mode = true,
+    const SYMBOL_TYPE mode_symbol = 0) {
     
     const std::uint32_t gid = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -440,7 +447,7 @@ __global__ void phase4_decode_write_output(
         decode_subsequence(subsequence_size, current_subsequence, mask, shift,
             start, in_pos, in_ptr, window, next,
             last_word_unit, last_word_bit, num_symbols, out_pos, out_ptr,
-            next_out_pos, table, bits_in_unit, last_at, true, true);
+            next_out_pos, table, bits_in_unit, last_at, true, true, write_mode, mode_symbol);
     }
 }
 
@@ -455,7 +462,9 @@ void cuhd::CUHDGPUDecoder::decode(
     std::shared_ptr<cuhd::CUHDGPUDecoderMemory> aux,
     size_t max_codeword_length,
     size_t preferred_subsequence_size,
-    size_t threads_per_block) {
+    size_t threads_per_block,
+    const bool write_mode /*= true*/,
+    const SYMBOL_TYPE mode_symbol /*= 0*/) {
     
     UNIT_TYPE* in_ptr = input->get();
     SYMBOL_TYPE* out_ptr = output->get();
@@ -470,6 +479,17 @@ void cuhd::CUHDGPUDecoder::decode(
     size_t num_sequences = SDIV(num_subseq, threads_per_block);
     
     const std::uint32_t bits_in_unit = sizeof(UNIT_TYPE) * 8;
+
+    // launch phase 0 (memset to most frequent value)
+    thrust::device_ptr<SYMBOL_TYPE> thrust_out_ptr(out_ptr);
+    auto p0Before = std::chrono::steady_clock::now();
+    if (!write_mode)
+        thrust::fill(thrust_out_ptr, thrust_out_ptr + output_size, mode_symbol); 
+    /*{ cudaMemset(out_ptr, 0xff, sizeof(SYMBOL_TYPE) * output_size);
+      cudaDeviceSynchronize(); CUERR }*/
+
+
+    auto p0After = std::chrono::steady_clock::now();
 
     auto p1Before = std::chrono::steady_clock::now();
     // launch phase 1 (intra-sequence synchronisation)
@@ -554,7 +574,9 @@ void cuhd::CUHDGPUDecoder::decode(
             output_size,
             table_ptr,
             sync_info,
-            bits_in_unit);
+            bits_in_unit,
+            write_mode,
+            mode_symbol);
     cudaDeviceSynchronize();
     CUERR
     auto p4After = std::chrono::steady_clock::now();
@@ -562,6 +584,8 @@ void cuhd::CUHDGPUDecoder::decode(
     ++invocation_count;
     if (invocation_count == 2)
         std::cout << "Detailed Profile (us):"
+                  << std::endl << "Phase 0: "
+                  << std::chrono::duration_cast<std::chrono::microseconds>(p0After - p0Before).count()
                   << std::endl << "Phase 1: "
                   << std::chrono::duration_cast<std::chrono::microseconds>(p1After - p1Before).count()
                   << std::endl << "Phase 2: "

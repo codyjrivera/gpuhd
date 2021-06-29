@@ -103,6 +103,10 @@ int main(int argc, char** argv) {
         dec_table = llhuff::LLHuffmanEncoder::get_decoder_table(enc_table);
     TIMER_STOP
     
+        // Extract most frequent symbol
+        SYMBOL_TYPE most_frequent_symbol = llhuff::LLHuffmanEncoder::get_most_frequent_symbol();
+        
+
     // buffer for compressed data
     std::unique_ptr<UNIT_TYPE[]> compressed
         = std::make_unique<UNIT_TYPE[]>(enc_table->compressed_size);
@@ -161,7 +165,7 @@ int main(int argc, char** argv) {
             gpu_in_buf, in_buf->get_compressed_size_units(),
             gpu_out_buf, out_buf->get_uncompressed_size(),
             gpu_table, gpu_decoder_memory,
-            MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS);
+            MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS, false, most_frequent_symbol);
     int constexpr NROUNDS = 10;                       
     TIMER_START(timings, "decoding")
         for (int i = 0; i < NROUNDS; ++i) {
@@ -169,7 +173,7 @@ int main(int argc, char** argv) {
             gpu_in_buf, in_buf->get_compressed_size_units(),
             gpu_out_buf, out_buf->get_uncompressed_size(),
             gpu_table, gpu_decoder_memory,
-            MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS);
+            MAX_CODEWORD_LENGTH, SUBSEQ_SIZE, NUM_THREADS, false, most_frequent_symbol);
         }
     TIMER_STOP
     

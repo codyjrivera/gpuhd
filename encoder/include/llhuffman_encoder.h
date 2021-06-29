@@ -40,6 +40,8 @@ namespace llhuff {
 
             static std::shared_ptr<cuhd::CUHDCodetable> get_decoder_table(
                 std::shared_ptr<LLHuffmanEncoderTable> enc_table);
+            
+            static SYMBOL_TYPE get_most_frequent_symbol();
 
         private:
             struct Coin {
@@ -69,6 +71,8 @@ namespace llhuff {
                     return np;
                 }
             };
+
+            static SYMBOL_TYPE most_frequent_symbol;
     };
 }
 

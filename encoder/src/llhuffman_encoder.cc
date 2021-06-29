@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <cmath>
 
+SYMBOL_TYPE llhuff::LLHuffmanEncoder::most_frequent_symbol;
+
 std::shared_ptr<std::vector<llhuff::LLHuffmanEncoder::Symbol>>
     llhuff::LLHuffmanEncoder::get_symbol_lengths(
     SYMBOL_TYPE* data, size_t size) {
@@ -41,6 +43,8 @@ std::shared_ptr<std::vector<llhuff::LLHuffmanEncoder::Symbol>>
         Symbol s; s.length = 1; s.symbol = symbols.at(0).first;
         std::vector<Symbol> vec(1);
         vec.at(0) = s;
+        
+        most_frequent_symbol = s.symbol;
 
         return std::make_shared<std::vector<Symbol>>(vec);
     }
@@ -49,6 +53,8 @@ std::shared_ptr<std::vector<llhuff::LLHuffmanEncoder::Symbol>>
         [](std::pair<SYMBOL_TYPE, size_t> &a,
             std::pair<SYMBOL_TYPE, size_t> &b) -> bool
             {return a.second < b.second;});
+
+    most_frequent_symbol = symbols.at(symbols.size() - 1).first;
     
     // create lists of coins (denomination, numismatic value)
     std::vector<std::vector<CoinPackage>> denom_lists;
@@ -266,3 +272,6 @@ std::shared_ptr<cuhd::CUHDCodetable>
     return table;
 }
 
+SYMBOL_TYPE llhuff::LLHuffmanEncoder::get_most_frequent_symbol() {
+    return most_frequent_symbol;
+}
