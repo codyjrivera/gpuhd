@@ -23,8 +23,10 @@ __device__ __forceinline__ void decode_subsequence(
     std::uint32_t start_bit,
     std::uint32_t &in_pos,
     const UNIT_TYPE* __restrict__ in_ptr,
-    UNIT_TYPE &window,
-    UNIT_TYPE &next,
+    UNIT_TYPE subsequence[4],
+    UNIT_TYPE &overflow_unit,
+    //UNIT_TYPE &window,
+    //UNIT_TYPE &next,
     std::uint32_t &last_word_unit,
     std::uint32_t &last_word_bit,
     std::uint32_t &num_symbols,
@@ -40,8 +42,10 @@ __device__ __forceinline__ void decode_subsequence(
     bool write_output) {
 
     // local unit registers
-    UNIT_TYPE work_window = window;
-    UNIT_TYPE work_next = next;
+    UNIT_TYPE work_window
+        = (overflow && current_subsequence > 0) ? overflow_unit : subsequence[0];
+    UNIT_TYPE work_next
+        = (overflow && current_subsequence > 0) ? subsequence[0] : subsequence[1];
     
     // Output buffering
     DECODE_OUT_TYPE out_buffer; // of size DECODE_BUFFER_CAP
@@ -84,25 +88,21 @@ __device__ __forceinline__ void decode_subsequence(
         // overflow
         if(at > bits_in_unit) {
             ++in_pos;
-            window = next; //in_ptr[in_pos];
-            next = in_ptr[in_pos + 1];
-            work_window = window;
-            work_next = next;
+            work_window = subsequence[0];
+            work_next = subsequence[1];
             at -= bits_in_unit;
             work_window <<= at;
             work_next <<= at;
 
-            copy_next = next; //in_ptr[in_pos + 1];
+            copy_next = subsequence[1]; //in_ptr[in_pos + 1];
             copy_next >>= bits_in_unit - at;
             work_window += copy_next;
         }
 
         else {
             ++in_pos;
-            window = next; //in_ptr[in_pos];
-            next = in_ptr[in_pos + 1];
-            work_window = window;
-            work_next = next;
+            work_window = subsequence[0];
+            work_next = subsequence[1];
             at = 0;
         }
     }
@@ -116,6 +116,10 @@ __device__ __forceinline__ void decode_subsequence(
             if (hit.num_bits == 0) {
                 hit = table[(work_window & mask) >> shift];
             }
+
+            //if (15 <= out_pos && out_pos <= 25) {
+            //    printf("At bit %d in unit %d (true unit %d), decoded %d to %d\n", at, current_unit, in_pos, hit.symbol, out_pos);         
+            //}
             
             // decode a symbol
             std::uint32_t taken = hit.num_bits;
@@ -174,11 +178,21 @@ __device__ __forceinline__ void decode_subsequence(
         // Bugfix -- Don't refill window at last codeword
         if (current_unit < subsequence_size) {
             ++in_pos;
-            
-            window = next;
-            next = in_ptr[in_pos + 1];
-            work_window = window;
-            work_next = next;
+
+            if (current_unit < subsequence_size - 1) {
+                // Make sure subsequence[] is allocated as registers
+                #pragma unroll
+                for (int i = 1; i <= 2; ++i) {
+                    if (current_unit == i) {
+                        work_window = subsequence[i];
+                        work_next = subsequence[i + 1];
+                    }
+                }
+            } else {
+                work_window = overflow_unit = subsequence[3];
+                *((uint4*) subsequence) = ((uint4*) in_ptr)[(in_pos + 1) / 4];
+                work_next = subsequence[0];
+            }
             
             if(at == bits_in_unit) {
                 at = 0;
@@ -187,7 +201,17 @@ __device__ __forceinline__ void decode_subsequence(
                 work_window <<= at;
                 work_next <<= at;
                 
-                UNIT_TYPE copy_next = in_ptr[in_pos + 1];
+                UNIT_TYPE copy_next;
+                if (current_unit < subsequence_size - 1) {
+                    #pragma unroll
+                    for (int i = 1; i <= 2; ++i) {
+                        if (current_unit == i) {
+                            copy_next = subsequence[i + 1];
+                        }
+                    }
+                } else {
+                    copy_next = subsequence[0];
+                }
                 copy_next >>= bits_in_unit - at;
                 work_window += copy_next;
             }
@@ -239,8 +263,11 @@ __global__ void phase1_decode_subseq(
         SYMBOL_TYPE* out_ptr = 0;
 
         // sliding window
-        UNIT_TYPE window = in_ptr[in_pos];
-        UNIT_TYPE next = in_ptr[in_pos + 1];
+        //UNIT_TYPE window = in_ptr[in_pos];
+        //UNIT_TYPE next = in_ptr[in_pos + 1];
+        UNIT_TYPE subsequence[4];
+        UNIT_TYPE overflow_unit;
+        *((uint4*) subsequence) = ((uint4*) in_ptr)[in_pos / 4];
 
         // start bit of last codeword in this subsequence
         std::uint32_t last_word_unit = 0;
@@ -262,7 +289,7 @@ __global__ void phase1_decode_subseq(
                 
                 if(subsequences_processed == 0) {
                     decode_subsequence(subsequence_size, current_subsequence,
-                                       shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr, window, next,
+                                       shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr, subsequence, overflow_unit,
                                        last_word_unit, last_word_bit, num_symbols,
                                        out_pos, out_ptr, next_out_pos, shared_table, cache_len,
                                        table, bits_in_unit, last_at, false, false);
@@ -273,7 +300,7 @@ __global__ void phase1_decode_subseq(
 
                 else {
                     decode_subsequence(subsequence_size, current_subsequence,
-                                       shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr, window, next,
+                                       shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr, subsequence, overflow_unit,
                                        last_word_unit, last_word_bit, num_symbols,
                                        out_pos, out_ptr, next_out_pos, shared_table, cache_len,
                                        table, bits_in_unit, last_at, true, false);
@@ -356,6 +383,7 @@ __global__ void phase2_synchronise_blocks(
         
         // current unit
         std::uint32_t in_pos = (current_subsequence - 1) * subsequence_size;
+        std::uint32_t old_in_pos = in_pos;
         
         // start bit of last codeword in this subsequence
         std::uint32_t last_word_unit = 0;
@@ -369,8 +397,11 @@ __global__ void phase2_synchronise_blocks(
         in_pos += sync_point.x;
         
         // sliding window
-        UNIT_TYPE window = in_ptr[in_pos];
-        UNIT_TYPE next = in_ptr[in_pos + 1];
+        //UNIT_TYPE window = in_ptr[in_pos];
+        //UNIT_TYPE next = in_ptr[in_pos + 1];
+        UNIT_TYPE subsequence[4];
+        UNIT_TYPE overflow_unit = in_ptr[in_pos];
+        *((uint4*) subsequence) = ((uint4*) in_ptr)[(old_in_pos / 4) + 1];
         
         std::uint32_t subsequences_processed = 0;
         bool synchronised_flag = false;
@@ -380,7 +411,7 @@ __global__ void phase2_synchronise_blocks(
             if(!synchronised_flag) {
                 decode_subsequence(subsequence_size, current_subsequence,
                     shared_mask, mask, shared_shift, shift, last_at, in_pos, in_ptr,
-                    window, next, last_word_unit, last_word_bit, num_symbols,
+                    subsequence, overflow_unit, last_word_unit, last_word_bit, num_symbols,
                     out_pos, out_ptr, next_out_pos, shared_table, cache_len, 
                     table, bits_in_unit, last_at, true, false);
                 
@@ -436,6 +467,7 @@ __global__ void phase3_copy_num_symbols_from_aux_to_sync_points(
     const std::uint32_t gid = blockDim.x * blockIdx.x + threadIdx.x;
 
     if(gid < total_num_subsequences) {
+        //printf("index %d, x %d, y %d, z %d\n", gid, sync_points[gid].x, sync_points[gid].y, subsequence_output_sizes[gid]);
         sync_points[gid].z = subsequence_output_sizes[gid];
     }
 }
@@ -506,23 +538,30 @@ __global__ void phase4_decode_write_output(
         }
         
         // sliding window
-        UNIT_TYPE window = in_ptr[in_pos];
-        UNIT_TYPE next = in_ptr[in_pos + 1];
+        //UNIT_TYPE window = in_ptr[in_pos];
+        //UNIT_TYPE next = in_ptr[in_pos + 1];
+        UNIT_TYPE subsequence[4];
+        UNIT_TYPE overflow_unit;
+        //*((uint4*) subsequence) = ((uint4*) in_ptr)[in_pos / 4];
         
         // start bit
         std::uint32_t start = 0;
         
         if(gid > 0) {
+            int old_in_pos = in_pos;
+            
             in_pos += sync_point.x;
             start = sync_point.y;
 
-            window = in_ptr[in_pos];
-            next = in_ptr[in_pos + 1];
+            overflow_unit = in_ptr[in_pos];
+            *((uint4*) subsequence) = ((uint4*) in_ptr)[(old_in_pos / 4) + 1];
+        } else {
+            *((uint4*) subsequence) = ((uint4*) in_ptr)[in_pos / 4];
         }
 
         // overflow from previous subsequence, decode, write output
         decode_subsequence(subsequence_size, current_subsequence, shared_mask, mask, shared_shift, shift,
-            start, in_pos, in_ptr, window, next,
+            start, in_pos, in_ptr, subsequence, overflow_unit,
             last_word_unit, last_word_bit, num_symbols, out_pos, out_ptr,
             next_out_pos, shared_table, cache_len, table,
             bits_in_unit, last_at, true, true);
